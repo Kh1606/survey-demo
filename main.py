@@ -90,15 +90,29 @@ def submit_response(sid: int, data: dict):
 # flat JSON for results.html
 @app.get("/surveys/{sid}/responses/flat")
 def flat(sid: int):
-    db = SessionLocal(); rows, header = [], None
-    for r in db.query(Response).filter_by(survey_id=sid):
-        row = {"response_id": r.id, "submitted_at": r.submitted_at.isoformat()}
+    """Return column-ordered data, always including q1 q2 q3."""
+    desired = ["q1", "q2", "q3", "submitted_at", "response_id"]
+
+    db = SessionLocal()
+    rows = []
+    for r in db.query(Response).filter_by(survey_id=sid).all():
+        row = {
+            "response_id": r.id,
+            "submitted_at": r.submitted_at.isoformat()
+        }
         for a in db.query(Answer).filter_by(response_id=r.id):
             row[a.question_id] = a.answer
-        rows.append(row); header = header or list(row.keys())
+        rows.append(row)
     db.close()
-    data = [[row.get(col) for col in header] for row in rows]
-    return {"columns": header, "data": data}
+
+    # make sure every desired column exists in every row (fill with '')
+    for row in rows:
+        for col in desired:
+            row.setdefault(col, "")
+
+    # order the data to match 'desired'
+    data = [[row[col] for col in desired] for row in rows]
+    return {"columns": desired, "data": data}
 
 # CSV export
 @app.get("/surveys/{sid}/export")
