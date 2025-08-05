@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8"><title>Survey Results</title>
+<style>
+ body{font-family:sans-serif;max-width:900px;margin:2rem auto;}
+ table{border-collapse:collapse;width:100%;}
+ th,td{border:1px solid #ccc;padding:6px;text-align:left;}
+ tr:nth-child(even){background:#f7f7f7;}
+</style>
+</head><body>
+<h1>Results for survey <span id="sid"></span></h1>
+
+<label>Survey ID:
+  <input id="survey-id" type="number" value="1" min="1" style="width:80px;">
+  <button id="load">Load</button>
+</label>
+
+<table id="tbl"></table>
+
+<script>
+const table = document.getElementById('tbl');
+const sid   = document.getElementById('sid');
+document.getElementById('load').onclick = () => load();
+
+async function load(){
+  const surveyId = document.getElementById('survey-id').value;
+  sid.textContent = surveyId;
+  table.innerHTML = '<tr><td>Loading…</td></tr>';
+
+  try{
+    const flat = await fetch(`/surveys/${surveyId}/responses/flat`).then(r=>r.json());
+    if(!flat.data.length){table.innerHTML = '<tr><td>No responses yet.</td></tr>'; return;}
+
+    // Build header
+    table.innerHTML = '';
+    const thead = table.insertRow();
+    flat.columns.forEach(c=>{
+      const th = document.createElement('th'); th.textContent=c; thead.appendChild(th);
+    });
+
+    // Build rows
+    flat.data.forEach(row=>{
+      const tr = table.insertRow();
+      row.forEach(val=> tr.insertCell().textContent = val);
+    });
+  }catch(err){
+    table.innerHTML = '<tr><td>Error loading data</td></tr>';
+    console.error(err);
+  }
+}
+
+// auto-load survey 1 on first open
+load();
+</script>
+</body></html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Survey Demo</title>
+  <style>
+    body{font-family:sans-serif;max-width:600px;margin:2rem auto;}
+    label{font-weight:bold;display:block;margin-top:1rem;}
+    input[type="text"],input[type="number"]{width:100%;padding:6px;}
+    button{margin-top:1.5rem;padding:8px 16px;}
+    pre{background:#f4f4f4;padding:1rem;overflow:auto;}
+  </style>
+</head>
+<body>
+  <h1 id="survey-title">Loading…</h1>
+  <form id="survey-form"></form>
+
+  <h2>Server response</h2>
+  <pre id="server-response">(none yet)</pre>
+
+<script>
+(async () => {
+  const surveyId = 1;                         // ← change to another ID later
+  // 1 · fetch survey definition
+  const meta = await fetch(`/surveys/${surveyId}`).then(r => r.json());
+
+  document.getElementById("survey-title").textContent = meta.title;
+  const form = document.getElementById("survey-form");
+
+  // 2 · render questions
+  meta.config.questions.forEach(q => {
+    const wrapper = document.createElement("div");
+    const label   = document.createElement("label");
+    label.textContent = q.label;
+    wrapper.appendChild(label);
+
+    let input;
+    if (q.type === "rating") {
+      input = document.createElement("input");
+      input.type = "number"; input.min = 1; input.max = 5; input.value = 3;
+    } else {                 // default to plain text
+      input = document.createElement("input");
+      input.type = "text";
+    }
+    input.name = q.id;
+    wrapper.appendChild(input);
+    form.appendChild(wrapper);
+  });
+
+  // 3 · submit handler
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const data = new FormData(form);
+    const answers = {};
+    data.forEach((v, k) => answers[k] = isFinite(v) ? Number(v) : v);
+
+    const res = await fetch(`/surveys/${surveyId}/responses`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({answers})
+    }).then(r => r.json());
+
+    document.getElementById("server-response").textContent =
+      JSON.stringify(res, null, 2);
+    form.reset();                     // clear for next entry
+  });
+
+  // 4 · add a submit button last
+  const btn = document.createElement("button");
+  btn.textContent = "Submit";
+  form.appendChild(btn);
+})();
+</script>
+</body>
+</html>
