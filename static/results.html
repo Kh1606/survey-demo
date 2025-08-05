@@ -18,38 +18,39 @@
 <table id="tbl"></table>
 
 <script>
-const table = document.getElementById('tbl');
-const sid   = document.getElementById('sid');
-document.getElementById('load').onclick = () => load();
+const table=document.getElementById('tbl');
+const sid=document.getElementById('sid');
+document.getElementById('load').onclick=()=>load();
 
 async function load(){
-  const surveyId = document.getElementById('survey-id').value;
-  sid.textContent = surveyId;
-  table.innerHTML = '<tr><td>Loading…</td></tr>';
+  const surveyId=document.getElementById('survey-id').value;
+  sid.textContent=surveyId;
+  table.innerHTML='<tr><td>Loading…</td></tr>';
 
   try{
-    const flat = await fetch(`/surveys/${surveyId}/responses/flat`).then(r=>r.json());
-    if(!flat.data.length){table.innerHTML = '<tr><td>No responses yet.</td></tr>'; return;}
+    const flat=await fetch(`/surveys/${surveyId}/responses/flat`).then(r=>r.json());
+    const desired=["q1","q2","q3","submitted_at","response_id"];
+    const header=desired.filter(c=>flat.columns.includes(c));
 
-    // Build header
-    table.innerHTML = '';
-    const thead = table.insertRow();
-    flat.columns.forEach(c=>{
-      const th = document.createElement('th'); th.textContent=c; thead.appendChild(th);
-    });
+    if(!flat.data.length){
+      table.innerHTML='<tr><td>No responses yet.</td></tr>';
+      return;
+    }
 
-    // Build rows
-    flat.data.forEach(row=>{
-      const tr = table.insertRow();
-      row.forEach(val=> tr.insertCell().textContent = val);
+    table.innerHTML='';
+    const thead=table.insertRow();
+    header.forEach(c=>{const th=document.createElement('th');th.textContent=c;thead.appendChild(th);});
+
+    flat.data.forEach(rowArr=>{
+      const obj=Object.fromEntries(flat.columns.map((c,i)=>[c,rowArr[i]]));
+      const tr=table.insertRow();
+      header.forEach(col=>tr.insertCell().textContent=obj[col]??'');
     });
   }catch(err){
-    table.innerHTML = '<tr><td>Error loading data</td></tr>';
+    table.innerHTML='<tr><td>Error loading data</td></tr>';
     console.error(err);
   }
 }
-
-// auto-load survey 1 on first open
-load();
+load();  // auto-load on first open
 </script>
 </body></html>

@@ -5,15 +5,15 @@ from sqlalchemy.orm import Session
 import datetime
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 import csv, io
 
 from database import engine, SessionLocal
-from fastapi.staticfiles import StaticFiles    # ← NEW
-
 
 Base = declarative_base()
-app = FastAPI()            # ①  APP OBJECT FIRST
-app.mount("/static", StaticFiles(directory="static"), name="static")  # ← NEW
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # ─── MODELS ────────────────────────────────────────────
 class Survey(Base):
     __tablename__ = "surveys"
@@ -35,13 +35,15 @@ class Answer(Base):
     question_id = Column(String, nullable=False)
     answer = Column(JSON, nullable=False)
 
-# Create tables
 Base.metadata.create_all(bind=engine)
 
 # ─── ENDPOINTS ─────────────────────────────────────────
 class SurveyCreate(BaseModel):
     title: str
-    config: dict          # {"questions": [...]}
+    config: dict          # {"questions":[...] }
+
+class SurveyUpdate(BaseModel):            # <-- NEW
+    config: dict
 
 @app.post("/surveys", status_code=201)
 def create_survey(data: SurveyCreate):
@@ -51,22 +53,15 @@ def create_survey(data: SurveyCreate):
     db.close()
     return {"id": survey.id}
 
-@app.on_event("startup")
-def startup():
+@app.put("/surveys/{survey_id}", status_code=204)      # <-- NEW
+def update_survey(survey_id: int, data: SurveyUpdate):
     db = SessionLocal()
-    if db.query(Survey).count() == 0:
-        sample = Survey(
-            title="Customer Feedback",
-            config={
-                "questions": [
-                    {"id": "q1", "type": "text", "label": "What is your name?"},
-                    {"id": "q2", "type": "rating", "label": "Rate our service (1-5)"}
-                ]
-            }
-        )
-        db.add(sample); db.commit()
-        print("✅ Sample survey created with id", sample.id)
-    db.close()
+    survey = db.query(Survey).get(survey_id)
+    if not survey:
+        db.close()
+        raise HTTPException(status_code=404, detail="Survey not found")
+    survey.config = data.config
+    db.commit(); db.close()
 
 @app.get("/surveys/{survey_id}")
 def get_survey(survey_id: int):
@@ -91,48 +86,37 @@ def submit_response(survey_id: int, data: dict):
 
 @app.get("/surveys/{survey_id}/responses/flat")
 def get_flat_responses(survey_id: int):
-    """Return columns+rows so the front-end can build a table easily."""
     db = SessionLocal()
     rows, header = [], None
     for r in db.query(Response).filter_by(survey_id=survey_id).all():
-        row = {
-            "response_id": r.id,
-            "submitted_at": r.submitted_at.isoformat()
-        }
+        row = {"response_id": r.id, "submitted_at": r.submitted_at.isoformat()}
         for a in db.query(Answer).filter_by(response_id=r.id):
             row[a.question_id] = a.answer
         rows.append(row)
-        header = header or list(row.keys())       # remember column order
+        header = header or list(row.keys())
     db.close()
-    # Convert rows to a list-of-lists so it serialises compactly
     row_list = [[row[col] for col in header] for row in rows]
     return {"columns": header, "data": row_list}
 
 @app.get("/surveys/{survey_id}/export")
 def export_csv(survey_id: int):
-    """Download results as CSV (opens in Excel/Sheets)."""
     flat = get_flat_responses(survey_id)
-    buf  = io.StringIO()
+    buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(flat["columns"])
     writer.writerows(flat["data"])
     buf.seek(0)
-    return StreamingResponse(
-        buf,
+    return StreamingResponse(buf,
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename=\"survey_{survey_id}.csv\"'}
-    )
+        headers={"Content-Disposition": f'attachment; filename=\"survey_{survey_id}.csv\"'})
 
 @app.get("/surveys/{survey_id}/responses")
 def get_responses(survey_id: int):
     db = SessionLocal()
-    records = []
+    out=[]
     for r in db.query(Response).filter_by(survey_id=survey_id).all():
         answers = db.query(Answer).filter_by(response_id=r.id).all()
-        records.append({
-            "response_id": r.id,
-            "submitted_at": r.submitted_at,
-            "answers": {a.question_id: a.answer for a in answers}
-        })
+        out.append({"response_id":r.id,"submitted_at":r.submitted_at,
+                    "answers":{a.question_id:a.answer for a in answers}})
     db.close()
-    return records
+    return out
